@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Valuation Agent - Frontend HTML</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --panel-2: #1f2937;
+      --text: #e5e7eb;
+      --muted: #94a3b8;
+      --accent: #22d3ee;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --err: #ef4444;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: Arial, Helvetica, sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at top, #1e293b 0%, var(--bg) 45%);
+    }
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      gap: 16px;
+    }
+    .card {
+      background: rgba(17, 24, 39, 0.92);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      color: var(--accent);
+    }
+    .subtitle {
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      background: var(--panel-2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 14px;
+    }
+    .range-wrap { display: grid; gap: 6px; }
+    input[type="range"] { width: 100%; }
+    .checks {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    button {
+      margin-top: 12px;
+      width: 100%;
+      border: 0;
+      border-radius: 10px;
+      background: linear-gradient(90deg, #06b6d4, #3b82f6);
+      color: white;
+      font-size: 15px;
+      font-weight: 600;
+      padding: 12px;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .status {
+      margin-top: 10px;
+      min-height: 20px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .status.ok { color: var(--ok); }
+    .status.err { color: var(--err); }
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+    }
+    .metric {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: var(--panel-2);
+    }
+    .metric .k {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .metric .v {
+      margin-top: 6px;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .section-title {
+      margin: 0 0 10px;
+      font-size: 16px;
+      color: var(--accent);
+    }
+    .report {
+      white-space: pre-wrap;
+      line-height: 1.45;
+      font-size: 14px;
+      background: #0b1220;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      max-height: 520px;
+      overflow: auto;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <h1>Valuation Agent - Frontend HTML</h1>
+      <div class="subtitle">Minimal web UI for the local valuation backend.</div>
+    </div>
+
+    <div class="card">
+      <div class="grid">
+        <div>
+          <label for="ticker">Ticker</label>
+          <input id="ticker" type="text" value="AAPL" placeholder="e.g. AAPL, PKN.WA">
+        </div>
+        <div class="range-wrap">
+          <label for="wacc">WACC: <span id="waccValue">10.0%</span></label>
+          <input id="wacc" type="range" min="5" max="20" step="0.5" value="10">
+        </div>
+        <div class="range-wrap">
+          <label for="growth">FCF growth: <span id="growthValue">5.0%</span></label>
+          <input id="growth" type="range" min="0" max="25" step="0.5" value="5">
+        </div>
+      </div>
+
+      <div class="checks">
+        <label><input id="wideMoat" type="checkbox"> Wide moat (+0.5pp terminal growth)</label>
+        <label><input id="buyback" type="checkbox" checked> Include buyback adjustment</label>
+        <label><input id="freshData" type="checkbox"> Refresh data (skip cache)</label>
+      </div>
+
+      <button id="runBtn">Run valuation</button>
+      <div id="status" class="status"></div>
+    </div>
+
+    <div id="resultsCard" class="card hidden">
+      <h2 class="section-title">Summary</h2>
+      <div id="metrics" class="metrics"></div>
+    </div>
+
+    <div id="reportCard" class="card hidden">
+      <h2 class="section-title">Agent narrative (Markdown)</h2>
+      <div id="reportText" class="report"></div>
+    </div>
+  </div>
+
+  <script>
+    const tickerEl = document.getElementById("ticker");
+    const waccEl = document.getElementById("wacc");
+    const growthEl = document.getElementById("growth");
+    const wideMoatEl = document.getElementById("wideMoat");
+    const buybackEl = document.getElementById("buyback");
+    const freshDataEl = document.getElementById("freshData");
+    const runBtn = document.getElementById("runBtn");
+    const statusEl = document.getElementById("status");
+    const waccValueEl = document.getElementById("waccValue");
+    const growthValueEl = document.getElementById("growthValue");
+    const metricsEl = document.getElementById("metrics");
+    const reportTextEl = document.getElementById("reportText");
+    const resultsCardEl = document.getElementById("resultsCard");
+    const reportCardEl = document.getElementById("reportCard");
+
+    function fmtNumber(value, currency = "") {
+      if (value === null || value === undefined || Number.isNaN(value)) return "—";
+      const n = Number(value);
+      if (!Number.isFinite(n)) return "—";
+      return `${n.toLocaleString("en-US", { maximumFractionDigits: 2 })}${currency ? " " + currency : ""}`;
+    }
+
+    function setStatus(text, kind = "") {
+      statusEl.textContent = text;
+      statusEl.className = `status ${kind}`.trim();
+    }
+
+    function setLoading(isLoading) {
+      runBtn.disabled = isLoading;
+      runBtn.textContent = isLoading ? "Working..." : "Run valuation";
+    }
+
+    function renderMetrics(data) {
+      const market = data.market_price;
+      const dcf = data.dcf?.price;
+      const median = data.multiples?.median;
+      const currency = data.currency || "";
+      const potential = (dcf && market && market > 0) ? ((dcf - market) / market) * 100 : null;
+
+      const sensitivity = data.sensitivity || {};
+      const ddm = data.ddm?.wycena;
+
+      const entries = [
+        { key: "Ticker", val: data.ticker || "—" },
+        { key: "Market price", val: fmtNumber(market, currency) },
+        { key: "DCF", val: fmtNumber(dcf, currency) },
+        { key: "Multiples median", val: fmtNumber(median, currency) },
+        {
+          key: "DCF vs market",
+          val: potential === null ? "—" : `${potential >= 0 ? "+" : ""}${potential.toFixed(1)}%`,
+        },
+        { key: "DDM", val: fmtNumber(ddm, currency) },
+        { key: "DCF bear", val: fmtNumber(sensitivity.pesymistyczny, currency) },
+        { key: "DCF base", val: fmtNumber(sensitivity.bazowy, currency) },
+        { key: "DCF bull", val: fmtNumber(sensitivity.optymistyczny, currency) },
+      ];
+
+      metricsEl.innerHTML = entries
+        .map((e) => `<div class="metric"><div class="k">${e.key}</div><div class="v">${e.val}</div></div>`)
+        .join("");
+    }
+
+    function renderReport(report) {
+      reportTextEl.textContent = report || "No report.";
+    }
+
+    function updateRangeLabels() {
+      waccValueEl.textContent = `${Number(waccEl.value).toFixed(1)}%`;
+      growthValueEl.textContent = `${Number(growthEl.value).toFixed(1)}%`;
+    }
+
+    async function runValuation() {
+      const ticker = tickerEl.value.trim().toUpperCase();
+      if (!ticker) {
+        setStatus("Enter a ticker.", "err");
+        return;
+      }
+
+      setLoading(true);
+      setStatus("Calling backend...");
+      resultsCardEl.classList.add("hidden");
+      reportCardEl.classList.add("hidden");
+
+      const payload = {
+        ticker,
+        wacc_pct: Number(waccEl.value),
+        growth_pct: Number(growthEl.value),
+        wide_moat: wideMoatEl.checked,
+        buyback: buybackEl.checked,
+        fresh_data: freshDataEl.checked,
+      };
+
+      try {
+        const resp = await fetch("/api/valuate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        const data = await resp.json();
+        if (!resp.ok) {
+          throw new Error(data.error || `HTTP ${resp.status}`);
+        }
+
+        renderMetrics(data);
+        renderReport(data.report);
+        resultsCardEl.classList.remove("hidden");
+        reportCardEl.classList.remove("hidden");
+        setStatus("Done.", "ok");
+      } catch (err) {
+        setStatus(`Error: ${err.message}`, "err");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    waccEl.addEventListener("input", updateRangeLabels);
+    growthEl.addEventListener("input", updateRangeLabels);
+    runBtn.addEventListener("click", runValuation);
+    tickerEl.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") runValuation();
+    });
+
+    updateRangeLabels();
+  </script>
+</body>
+</html>

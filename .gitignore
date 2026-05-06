@@ -1,0 +1,32 @@
+# Secrets
+.env
+
+# yfinance cache (generated locally)
+cache/
+!cache/.gitkeep
+
+# Generated reports
+reports/
+!reports/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.swp
