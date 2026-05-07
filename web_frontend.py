@@ -1,9 +1,14 @@
-"""Thin HTTP frontend for Valuation Agent.
+"""Valuation JSON API for the Next.js frontend (and other clients).
+
+Starts ThreadingHTTPServer with:
+  POST /api/valuate
+  GET  /api/health
+  GET  /        — short note (UI is in frontend/)
 
 Run:
     python web_frontend.py
 
-Then open http://127.0.0.1:8000 (override with WEB_HOST / WEB_PORT).
+Default: http://127.0.0.1:8000 — set WEB_HOST / WEB_PORT to override.
 """
 
 from __future__ import annotations
@@ -18,8 +23,6 @@ from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent
-WEB_DIR = BASE_DIR / "web"
-INDEX_HTML_PATH = WEB_DIR / "index.html"
 
 # Wczytaj .env z katalogu projektu.
 load_dotenv(BASE_DIR / ".env")
@@ -86,20 +89,11 @@ class FrontendHandler(BaseHTTPRequestHandler):
         path = parsed.path
 
         if path in ("/", "/index.html"):
-            if not INDEX_HTML_PATH.exists():
-                self._send_text(
-                    "Missing web/index.html.",
-                    status=HTTPStatus.INTERNAL_SERVER_ERROR,
-                )
-                return
-
-            html = INDEX_HTML_PATH.read_text(encoding="utf-8")
-            body = html.encode("utf-8")
-            self.send_response(HTTPStatus.OK)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            self._send_text(
+                "Valuation API only. Run the Next.js app: cd frontend && npm run dev "
+                f"(http://127.0.0.1:{os.getenv('WEB_PORT', '8000')} — POST /api/valuate, GET /api/health).",
+                status=HTTPStatus.OK,
+            )
             return
 
         if path == "/api/health":
@@ -276,12 +270,13 @@ def run_server() -> None:
     port = int(os.getenv("WEB_PORT", "8000"))
     httpd = ThreadingHTTPServer((host, port), FrontendHandler)
 
-    print(f"Frontend działa na http://{host}:{port}")
-    print("Aby zatrzymać, naciśnij Ctrl+C.")
+    print(f"Valuation HTTP API listening on http://{host}:{port}")
+    print("Next.js UI: cd frontend && npm run dev → http://127.0.0.1:3000")
+    print("Ctrl+C to stop.")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print("\nZatrzymano serwer.")
+        print("\nServer stopped.")
     finally:
         httpd.server_close()
 

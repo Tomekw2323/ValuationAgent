@@ -1,43 +1,50 @@
 # Valuation Agent
 
-GPT-4o–orchestrated equity research demo: **DCF**, **trading multiples**, **dividend discount (DDM)**, optional **sum-of-parts (SOTP)** for select names, and analyst context from **yfinance**. Works for **US-listed** tickers and **Warsaw Stock Exchange (GPW)** names (`.WA` suffix).
+**GPT‑4o** orchestrates repeatable equity research: **DCF**, **relative multiples**, **dividend discount (DDM)** (when applicable), optional **sum‑of‑parts (SOTP)** for selected tickers, and **analyst-price context** from **yfinance**. Works for major **US-listed** stocks and **Warsaw GPW** (`.WA` tickers).
 
-English narrative reports, Streamlit UI, CLI, static HTML server, and Markdown / PDF export — useful as a portfolio piece or teaching example, **not** production investment advice.
+| Entry points | Purpose |
+|----------------|----------|
+| [`main.py`](main.py) | Full **tool‑use agent loop** → long Markdown report |
+| [`app.py`](app.py) | **Streamlit** dashboard (DCF sliders + Plotly charts) |
+| [`frontend/`](frontend/) | **Next.js 15** browser UI (calls Python API via proxy) |
+| [`web_frontend.py`](web_frontend.py) | **HTTP JSON API** for the Next app (`POST /api/valuate`) |
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+English investor-facing narratives; persisted tool JSON still uses legacy **Polish field names** — the model is instructed to read them and write reports in English. Educational / portfolio demo only — **not** investment advice.
+
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Next.js 15](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
----
-
-## Highlights
-
-| Capability | Notes |
-|------------|--------|
-| **Agent loop** | GPT-4o chooses tools (up to 10 iterations), then synthesizes an English Markdown report. |
-| **DCF** | Single- and two-stage models, CAPM-derived WACC hints, per-share fallback, buyback uplift, optional wide-moat terminal bump. |
-| **Multiples** | P/E, EV/EBITDA, P/BV, EV/Sales where relevant; IQR peer cleaning; GPW liquidity / country-risk discount vs. Western peers. |
-| **DDM** | Gordon growth with stability guardrails when \(g \approx r\). |
-| **SOTP** | Built-in segment view for **AMZN** and **GOOGL** / **GOOG**. |
-| **Data** | yfinance with a 48h JSON file cache under `cache/` (gitignored). |
-
-Internal tool payloads still use **Polish JSON keys** (`cena_na_akcje`, `mediana`, …) for historical continuity; prompts tell the model to read those fields and write the **final report in English**.
+**Repository:** [github.com/Tomekw2323/ValuationAgent](https://github.com/Tomekw2323/ValuationAgent)
 
 ---
 
-## Quick start
+## Quick start (Python)
 
 ```bash
-cd valuation_agent
+git clone https://github.com/Tomekw2323/ValuationAgent.git
+cd ValuationAgent
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate      # Linux / macOS
+
+# Windows
+.venv\Scripts\activate
+copy .env.example .env
+
+# macOS / Linux
+# source .venv/bin/activate
+# cp .env.example .env
+
 pip install -r requirements.txt
-copy .env.example .env           # Windows: copy; Unix: cp
-# Fill OPENAI_* or AZURE_OPENAI_* in .env
+# Set OPENAI_API_KEY or AZURE_OPENAI_* in .env — see Configuration below.
+```
+
+**Streamlit**
+
+```bash
 streamlit run app.py
 ```
 
-**CLI** (writes to terminal; `--save` → `reports/` as Markdown + PDF when ReportLab succeeds):
+**CLI** (GPT tool loop + terminal report; `--save` writes Markdown — and PDF when ReportLab succeeds — under `reports/`)
 
 ```bash
 python main.py AAPL
@@ -45,11 +52,63 @@ python main.py PKN.WA --fresh
 python main.py CDR.WA --save --verbose
 ```
 
-**Static HTTP UI** (`web/index.html` + `web_frontend.py`):
+---
+
+## Quick start (Next.js UI + API)
+
+Two processes are required: the Python valuation API and the Next.js dev server.
+
+**Terminal A — valuation API**
 
 ```bash
 python web_frontend.py
-# http://127.0.0.1:8000   (WEB_HOST / WEB_PORT optional)
+# Default: http://127.0.0.1:8000  ·  Override with WEB_HOST / WEB_PORT
+```
+
+**Terminal B — web UI**
+
+```bash
+cd frontend
+npm ci          # or: npm install
+cp .env.example .env.local     # optional
+npm run dev
+# Open http://127.0.0.1:3000
+```
+
+| Environment | Meaning |
+|-------------|---------|
+| Root [`.env`](.env.example) | LLM + yfinance use (never commit `.env`) |
+| [`frontend/.env.local`](frontend/.env.example) | `VALUATION_API_URL` — defaults to `http://127.0.0.1:8000` |
+
+Production-style run for the frontend: `npm run build && npm run start` (still needs the Python API reachable at `VALUATION_API_URL`).
+
+See **[docs/HTTP_API.md](docs/HTTP_API.md)** for request/response JSON and **[docs/FRONTENDS.md](docs/FRONTENDS.md)** for how CLI / Streamlit / Next.js differ.
+
+---
+
+## Architecture (high level)
+
+```mermaid
+flowchart LR
+  subgraph ui [Interfaces]
+    ST[Streamlit app.py]
+    NX[Next.js frontend]
+    CLI[CLI main.py]
+  end
+  subgraph py [Python core]
+    API[web_frontend.py]
+    Agent[agent/orchestrator.py]
+    Tools[tools/ dcf multiples ddm ...]
+    YF[yfinance + cache]
+  end
+  LLM[GPT-4o]
+  NX -->|POST /api/valuate via Next Route Handler| API
+  API --> Agent
+  ST --> Agent
+  CLI --> Agent
+  Agent --> LLM
+  Agent --> Tools
+  Tools --> YF
 ```
 
 ---
@@ -57,44 +116,33 @@ python web_frontend.py
 ## Repository layout
 
 ```
-valuation_agent/
-  agent/           # GPT-4o client, prompts, orchestration loop
-  tools/           # data_fetcher, dcf, multiples, ddm, sotp
-  report/          # terminal display, Markdown save, PDF
-  data/            # cache + validation helpers
-  web/             # optional static frontend
-  app.py           # Streamlit dashboard
-  main.py          # CLI
-  web_frontend.py  # Threaded HTTPServer wrapper
-  config.py        # env-driven OpenAI vs Azure settings
+ValuationAgent/
+  agent/              # GPT-4o prompts, orchestration (tool loop + run_final flow)
+  frontend/           # Next.js App Router UI + `/api/valuate` proxy
+  tools/              # yfinance fetch, DCF, multiples, DDM, SOTP
+  report/             # Rich terminal, Markdown/PDF export
+  data/               # validators, file cache helpers
+  tests/
+  docs/               # Extra documentation (API, frontends)
+  web/                # Notes / optional static assets
+  web_frontend.py     # ThreadingHTTPServer JSON API
+  app.py              # Streamlit
+  main.py             # CLI
+  config.py
 ```
 
 ---
 
 ## Configuration
 
-Supported providers (via `config.py`):
+LLM backends (via [`config.py`](config.py)):
 
-- **OpenAI**: `OPENAI_API_KEY`, optional `OPENAI_MODEL` (defaults to `gpt-4o`).
-- **Azure OpenAI**: `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`, `AZURE_OPENAI_API_VERSION`.
+| Provider | Variables |
+|----------|-----------|
+| **OpenAI** | `OPENAI_API_KEY`, optional `OPENAI_MODEL` (default `gpt-4o`) |
+| **Azure OpenAI** | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT`, `AZURE_OPENAI_API_VERSION` |
 
-Never commit `.env`. Example variables live in [.env.example](.env.example).
-
----
-
-## Cost ballpark
-
-Expect on the order of **6–8** chat completions per full CLI run (one tool trajectory + synthesis). Typical token load is loosely **~8k–12k** input and **~1.2k–1.8k** output tokens — on the order of **a few cents per ticker** at public GPT-4o list pricing (verify current rates). Hitting `MAX_ITERATIONS` will cost more — watch logs.
-
----
-
-## Limitations (read before trusting any number)
-
-1. **yfinance is free and imperfect** — delayed quotes, filings lag, sparse GPW fields, occasional silent gaps. Always verify filings and exchange data.
-2. **Heuristic GPW discount** — sector overlays are rules of thumb, not econometric estimates.
-3. **Banks / insurers** — modeled FCF is often misleading; the agent is steered toward book / dividend-aware methods when `ostrzezenie_bank` is set.
-4. **Gaming & cyclicals** — FCF spikes around releases or cycles; the agent is instructed to lean on multiples and label DCF uncertainty.
-5. **SOTP segment splits** — static assumptions for demo companies; stale after corporate actions.
+Do **not** commit `.env`. Use [`.env.example`](.env.example) as a template.
 
 ---
 
@@ -104,14 +152,34 @@ Expect on the order of **6–8** chat completions per full CLI run (one tool tra
 pytest tests/ -q
 ```
 
+```bash
+cd frontend && npm run build
+```
+
+---
+
+## Cost ballpark
+
+A full **`main.py`** run is often on the order of **6–8** API round-trips (~**8k–12k** input tokens, ~**1.2k–1.8k** output for GPT‑4o-class models — check current pricing). The **Streamlit / Next.js** path uses `run_preliminary` + `run_final` (fewer calls than the full CLI tool loop for the narrative step). Watch logs if you hit iteration limits.
+
+---
+
+## Limitations
+
+1. **yfinance** — delayed or incomplete data, especially on smaller / GPW names.  
+2. **GPW discount heuristics** — rules of thumb, not calibrated econometrics.  
+3. **Banks / insurers** — FCF-based DCF is often wrong; agent is steered toward book / DDM when flagged.  
+4. **Gaming / cyclicals** — FCF timing; reliance on multiples and labelled uncertainty.  
+5. **SOTP** — static segment assumptions for demo tickers (e.g. AMZN, GOOGL).
+
 ---
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+[MIT](LICENSE)
 
 ---
 
 ## Disclaimer
 
-This software is provided **for education and experimentation only**. It is **not** investment, tax, or legal advice. Past model output is not indicative of future results. **You are responsible** for compliance with market rules and API terms where you deploy it.
+This software is provided **for education and experimentation only**. It is **not** investment, tax, or legal advice. You are responsible for complying with market rules and third-party API terms wherever you run it.
